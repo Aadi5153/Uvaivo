@@ -40,15 +40,19 @@ export function AppProvider({ children }) {
   useEffect(() => {
     async function loadAll() {
       try {
+        // Load customers
         const { data: custData } = await supabase.from('customers').select('*');
         setAllUsers((custData || []).map(customerFromDB));
 
+        // Load sellers
         const { data: sellData } = await supabase.from('sellers').select('*');
         setAllSellers((sellData || []).map(sellerFromDB));
 
+        // Load stores
         const { data: storeData } = await supabase.from('stores').select('*');
         let storeList = (storeData || []).map(storeFromDB);
-
+        
+        // Seed stores if empty
         if (storeList.length === 0) {
           const seedStores = STORES.map(storeToDB);
           await supabase.from('stores').insert(seedStores);
@@ -56,9 +60,11 @@ export function AppProvider({ children }) {
         }
         setAllStores(storeList);
 
+        // Load products
         const { data: prodData } = await supabase.from('products').select('*');
         let prodList = (prodData || []).map(productFromDB);
-
+        
+        // Seed products if empty
         if (prodList.length === 0) {
           const seedProducts = PRODUCTS.map(productToDB);
           await supabase.from('products').insert(seedProducts);
@@ -66,23 +72,28 @@ export function AppProvider({ children }) {
         }
         setProducts(prodList);
 
+        // Load orders
         const { data: ordData } = await supabase.from('orders').select('*').order('date', { ascending: false });
         setOrders((ordData || []).map(orderFromDB));
 
+        // Load payments
         const { data: payData } = await supabase.from('payments').select('*').order('date', { ascending: false });
         setPayments((payData || []).map(paymentFromDB));
 
+        // Load settings
         const { data: setData } = await supabase.from('settings').select('*').eq('id', 1).single();
         if (setData) {
           setAdminSettingsState({ platformFeePercent: Number(setData.platform_fee_percent) });
           setDeliverySettingsState({ slabs: setData.delivery_slabs || [] });
         }
 
+        // Load carts from localStorage (per device)
         try {
           const savedCart = localStorage.getItem('uvaivo_carts');
           if (savedCart) setCarts(JSON.parse(savedCart));
         } catch {}
 
+        // Load admin auth
         const authSaved = localStorage.getItem('uvaivo_admin_auth');
         if (authSaved === 'true') setAdminAuth(true);
 
@@ -95,25 +106,24 @@ export function AppProvider({ children }) {
     loadAll();
   }, []);
 
+  // Save cart locally
   useEffect(() => {
     try { localStorage.setItem('uvaivo_carts', JSON.stringify(carts)); } catch {}
   }, [carts]);
 
+  // Save admin auth
   useEffect(() => {
     try { localStorage.setItem('uvaivo_admin_auth', String(adminAuth)); } catch {}
   }, [adminAuth]);
 
-  // ==================== CUSTOMER (FIXED) ====================
+  // ==================== CUSTOMER ====================
   const loginCustomer = useCallback(async (mobile) => {
     try {
-      console.log('[LOGIN] Mobile:', mobile);
-      const { data: existing, error: existingErr } = await supabase
-        .from('customers').select('*').eq('mobile', mobile).limit(1);
+      const { data: existing } = await supabase
+        .from('customers').select('*').eq('mobile', mobile).maybeSingle();
 
-      if (existingErr) console.error('Query error:', existingErr);
-
-      if (existing && existing.length > 0) {
-        const c = customerFromDB(existing[0]);
+      if (existing) {
+        const c = customerFromDB(existing);
         setCustomerState(c);
         return c;
       }
@@ -125,17 +135,10 @@ export function AppProvider({ children }) {
         address: '',
         location: '',
       };
-      const { data: created, error: createErr } = await supabase
-        .from('customers').insert(customerToDB(newCustomer)).select();
+      const { data: created } = await supabase
+        .from('customers').insert(customerToDB(newCustomer)).select().single();
 
-      console.log('[LOGIN] createErr:', createErr);
-      if (createErr) {
-        console.error('Insert error:', createErr);
-        showToast('Login failed: ' + createErr.message, 'error');
-        return null;
-      }
-
-      const c = customerFromDB(created[0]);
+      const c = customerFromDB(created);
       setCustomerState(c);
       setAllUsers((u) => [...u, c]);
       return c;
@@ -158,17 +161,13 @@ export function AppProvider({ children }) {
 
   const logoutCustomer = useCallback(() => setCustomerState(null), []);
 
-  // ==================== SELLER (FIXED) ====================
+  // ==================== SELLER ====================
   const loginSeller = useCallback(async (mobile) => {
     try {
-      console.log('[LOGIN] Mobile:', mobile);
-      const { data: existing, error: existingErr } = await supabase
-        .from('sellers').select('*').eq('mobile', mobile).limit(1);
-
-      if (existingErr) console.error('Seller query error:', existingErr);
-
-      if (existing && existing.length > 0) {
-        const s = sellerFromDB(existing[0]);
+      const { data: existing } = await supabase
+        .from('sellers').select('*').eq('mobile', mobile).maybeSingle();
+      if (existing) {
+        const s = sellerFromDB(existing);
         setSellerState(s);
         if (s.subscriptionActive && s.subscriptionExpiry) {
           setSubscriptionState({
@@ -197,12 +196,9 @@ export function AppProvider({ children }) {
         subscriptionActive: false,
         subscriptionExpiry: null,
       };
-      const { data: created, error } = await supabase
-        .from('sellers').insert(sellerToDB(newSeller)).select();
-
-      if (error) { console.error(error); return null; }
-
-      const s = sellerFromDB(created[0]);
+      const { data: created } = await supabase
+        .from('sellers').insert(sellerToDB(newSeller)).select().single();
+      const s = sellerFromDB(created);
       setSellerState(s);
       setAllSellers((list) => [...list, s]);
       return s;
@@ -249,10 +245,9 @@ export function AppProvider({ children }) {
   // ==================== PRODUCTS ====================
   const addProduct = useCallback(async (product) => {
     try {
-      const { data: created, error } = await supabase
-        .from('products').insert(productToDB(product)).select();
-      if (error) { console.error(error); showToast('Failed to add product', 'error'); return; }
-      const p = productFromDB(created[0]);
+      const { data: created } = await supabase
+        .from('products').insert(productToDB(product)).select().single();
+      const p = productFromDB(created);
       setProducts((prev) => [...prev, p]);
     } catch (err) { console.error(err); showToast('Failed to add product', 'error'); }
   }, [showToast]);
@@ -276,6 +271,7 @@ export function AppProvider({ children }) {
 
   // ==================== CART ====================
   const customerKey = customer?.id || 'guest';
+
   const getCart = useCallback(() => carts[customerKey] || [], [carts, customerKey]);
 
   const addToCart = useCallback((productId, quantity = 1) => {
@@ -318,10 +314,9 @@ export function AppProvider({ children }) {
   // ==================== ORDERS ====================
   const placeOrder = useCallback(async (order) => {
     try {
-      const { data: created, error } = await supabase
-        .from('orders').insert(orderToDB(order)).select();
-      if (error) { console.error(error); showToast('Order failed', 'error'); return; }
-      const o = orderFromDB(created[0]);
+      const { data: created } = await supabase
+        .from('orders').insert(orderToDB(order)).select().single();
+      const o = orderFromDB(created);
       setOrders((prev) => [o, ...prev]);
     } catch (err) { console.error(err); showToast('Order failed', 'error'); }
   }, [showToast]);
@@ -336,15 +331,14 @@ export function AppProvider({ children }) {
   // ==================== PAYMENTS ====================
   const addPayment = useCallback(async (payment) => {
     try {
-      const { data: created, error } = await supabase
-        .from('payments').insert(paymentToDB(payment)).select();
-      if (error) { console.error(error); return; }
-      const p = paymentFromDB(created[0]);
+      const { data: created } = await supabase
+        .from('payments').insert(paymentToDB(payment)).select().single();
+      const p = paymentFromDB(created);
       setPayments((prev) => [p, ...prev]);
     } catch (err) { console.error(err); }
   }, []);
 
-  // ==================== ADMIN ====================
+  // ==================== ADMIN SETTINGS ====================
   const updateAdminSettings = useCallback(async (updates) => {
     try {
       const merged = { ...adminSettings, ...updates };
