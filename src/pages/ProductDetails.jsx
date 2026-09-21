@@ -26,7 +26,7 @@ export default function ProductDetails({ product, onBack, onOpenStore, onBuyNow 
         <div className="page-title">Product Details</div>
       </div>
 
-      <div className="pd-img">{product.image}</div>
+      <div className="pd-img">{product.image && product.image.startsWith("http") ? <img src={product.image} alt={product.name} style={{width:"100%",height:"100%",objectFit:"cover"}} /> : (product.image || "📦")}</div>
 
       <div className="pd-body">
         <div className="pd-name">{product.name}</div>

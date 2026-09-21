@@ -82,7 +82,7 @@ export default function StoreDetails({ store, onBack, onOpenProduct }) {
                 className="product-card"
                 onClick={() => onOpenProduct(p)}
               >
-                <div className="product-img">{p.image}</div>
+                <div className="product-img">{p.image && p.image.startsWith("http") ? <img src={p.image} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}} /> : (p.image || "📦")}</div>
                 <div className="product-body">
                   <div className="product-name">{p.name}</div>
                   <div className="product-bottom">
